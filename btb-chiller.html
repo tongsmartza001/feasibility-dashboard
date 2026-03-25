@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTB Chiller — Investment Feasibility Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f9fafb}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useMemo}=React;
+const {ComposedChart,Line,Area,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer,ReferenceLine,Bar}=Recharts;
+
+const DEF_INVEST=4500000, DR=0.03, BASELINE_KWT=1.23, RTH_YR=1890000, KWH_YR=2300000;
+const F="'Cordia New','Segoe UI',sans-serif", FM="'Cordia New',monospace";
+
+const saving=[1178667,1196347,1214292,1232507,1250994,1269759,1288806,1308138,1327760,1347676,1367891,1388410,1409236,1430374,1451830,1473607,1495711,1518147,1540919,1564033];
+const maintTotal=[390000,493850,451140,510148,466292,527118,536630,544695,554545,562904,573104,581770,592334,601321,612262,621580,632916,642582,654326,664352];
+
+function run(inv){
+  const nf=saving.map((s,i)=>s-maintTotal[i]);
+  let cum=-inv;const cf=nf.map(n=>{cum+=n;return cum});
+  let nr=-inv;const nv=nf.map((n,i)=>{nr+=n/(1+DR)**(i+1);return Math.round(nr)});
+  const data=[{year:0,cumRev:0,cumCost:inv,npv:-inv,cumCF:-inv,saving:0,maint:0,netCF:0}];
+  let cR=0,cC=inv;
+  for(let i=0;i<20;i++){cR+=saving[i];cC+=maintTotal[i];data.push({year:i+1,cumRev:cR,cumCost:cC,npv:nv[i],cumCF:cf[i],saving:saving[i],maint:maintTotal[i],netCF:nf[i]})}
+  let pb=null;for(let i=0;i<20;i++){if(cf[i]>=0){pb=i>0?i+Math.abs(cf[i-1])/nf[i]:inv/nf[0];break}}
+  if(pb===null)pb=99;
+  let rate=0.1;
+  for(let it=0;it<500;it++){let v=-inv,d=0;for(let i=0;i<20;i++){v+=nf[i]/(1+rate)**(i+1);d+=-nf[i]*(i+1)/(1+rate)**(i+2)}if(Math.abs(d)<1e-10)break;const r2=rate-v/d;if(Math.abs(r2-rate)<1e-8){rate=r2;break}rate=r2}
+  let pbY=Math.floor(pb),pbM=Math.round((pb-pbY)*12);if(pbM===12){pbY++;pbM=0}
+  return{data,pbY,pbM,irr:rate,npvFinal:nv[19],totalSaving:saving.reduce((a,b)=>a+b),totalMaint:maintTotal.reduce((a,b)=>a+b),totalNet:nf.reduce((a,b)=>a+b)};
+}
+
+const fmt=v=>{if(Math.abs(v)>=1e6)return`฿${(v/1e6).toFixed(1)}M`;if(Math.abs(v)>=1e3)return`฿${(v/1e3).toFixed(0)}K`;return`฿${v}`};
+const fmtN=v=>v.toLocaleString("en-US",{maximumFractionDigits:0});
+const fmtM=v=>Math.abs(v)>=1e6?`${(v/1e6).toFixed(2)} M`:fmtN(v);
+
+const TT=({active,payload,label})=>{
+  if(!active||!payload?.length)return null;
+  return React.createElement("div",{style:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 16px",fontSize:16,fontFamily:FM,boxShadow:"0 4px 16px rgba(0,0,0,.06)"}},
+    React.createElement("div",{style:{color:"#6b7280",marginBottom:6,fontWeight:700,fontSize:15}},`Year ${label}`),
+    payload.map((p,i)=>React.createElement("div",{key:i,style:{display:"flex",justifyContent:"space-between",gap:24,marginBottom:2}},
+      React.createElement("span",{style:{color:"#374151",fontSize:15}},p.name),
+      React.createElement("span",{style:{fontWeight:700,color:p.color,fontSize:16}},`฿${fmtN(p.value)}`))));
+};
+
+function App(){
+  const[investment,setInvestment]=useState(DEF_INVEST);
+  const[inputText,setInputText]=useState("4,500,000");
+  const[view,setView]=useState("invest");
+  const r=useMemo(()=>run(investment),[investment]);
+  const handleChange=e=>{const raw=e.target.value.replace(/,/g,"");setInputText(e.target.value);const num=parseInt(raw);if(!isNaN(num)&&num>0)setInvestment(num)};
+  const handleBlur=()=>setInputText(investment.toLocaleString("en-US"));
+  const presets=[{l:"3.5M",v:3.5e6},{l:"4M",v:4e6},{l:"4.5M",v:4.5e6},{l:"5M",v:5e6},{l:"6M",v:6e6},{l:"7M",v:7e6}];
+  const color="#0d9488";
+
+  return React.createElement("div",{style:{background:"#f9fafb",minHeight:"100vh",padding:"32px 28px",fontFamily:F,color:"#111827"}},
+    // Header
+    React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:24}},
+      React.createElement("div",{style:{width:8,height:48,background:color,borderRadius:4}}),
+      React.createElement("h1",{style:{fontSize:30,fontWeight:800,margin:0,fontFamily:F}},"BTB Chiller — Investment Feasibility (11.3% Saving)")
+    ),
+    // Investment Input
+    React.createElement("div",{style:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:14,padding:"16px 20px",marginBottom:20}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          React.createElement("span",{style:{fontSize:18,fontWeight:700,color:"#374151",fontFamily:F}},"Investment (THB):"),
+          React.createElement("div",{style:{position:"relative"}},
+            React.createElement("span",{style:{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6b7280",fontWeight:700,fontSize:20}},"฿"),
+            React.createElement("input",{type:"text",value:inputText,onChange:handleChange,onBlur:handleBlur,onFocus:e=>e.target.select(),style:{padding:"10px 14px 10px 30px",borderRadius:10,border:"2px solid #e5e7eb",fontSize:22,fontWeight:800,fontFamily:FM,width:220,color:color,background:"#f9fafb",outline:"none"}}))),
+        React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},
+          presets.map(p=>React.createElement("button",{key:p.v,onClick:()=>{setInvestment(p.v);setInputText(p.v.toLocaleString("en-US"))},style:{padding:"8px 16px",borderRadius:8,border:investment===p.v?"2px solid "+color:"1px solid #e5e7eb",background:investment===p.v?"#f0fdfa":"#fff",color:investment===p.v?color:"#9ca3af",fontSize:16,fontWeight:700,fontFamily:FM,cursor:"pointer"}},`฿${p.l}`))))),
+    // KPI Cards
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:28}},
+      [{label:"Net Present Value",val:`฿${fmtN(r.npvFinal)}`,sub:`Investment: ฿${fmtN(investment)}`,c:"#0d9488"},
+       {label:"IRR",val:`${(r.irr*100).toFixed(2)}%`,sub:"Internal Rate of Return",c:"#16a34a"},
+       {label:"Payback Period",val:r.pbY<99?`${r.pbY}Y ${r.pbM}M`:"> 20Y",sub:`Saving Y1: ฿${fmtN(saving[0])}`,c:"#2563eb"},
+       {label:"Decision",val:r.irr>DR?"Invest":"Do Not",sub:`Net 20yr: ฿${fmtN(r.totalNet)}`,c:r.irr>DR?"#16a34a":"#ef4444"}
+      ].map((k,i)=>React.createElement("div",{key:i,style:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:14,padding:"22px 20px",borderTop:`3px solid ${k.c}`}},
+        React.createElement("div",{style:{fontSize:14,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8,fontFamily:F}},k.label),
+        React.createElement("div",{style:{fontSize:34,fontWeight:800,color:k.c,fontFamily:FM}},k.val),
+        React.createElement("div",{style:{fontSize:15,color:"#9ca3af",marginTop:6,fontFamily:F}},k.sub)))),
+    // Baseline vs Propose Table
+    React.createElement("div",{style:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:14,padding:"16px 18px",marginBottom:24,overflowX:"auto"}},
+      React.createElement("div",{style:{fontSize:20,fontWeight:700,marginBottom:12,fontFamily:F}},"Project Summary"),
+      React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:16,fontFamily:FM}},
+        React.createElement("thead",null,
+          React.createElement("tr",null,
+            ["No.","Description","kW/Ton","RTh/Year","kWh/Year","Propose kW/Ton","Saving kWh","% Saving","Cost Saving","Total Cost","Payback","IRR"].map(h=>
+              React.createElement("th",{key:h,style:{padding:"10px",background:["Payback","IRR"].includes(h)?"#b91c1c":"#0d9488",color:"#fff",fontWeight:700,border:"1px solid #0a7c72",textAlign:"center",fontSize:14}},h)))),
+        React.createElement("tbody",null,
+          React.createElement("tr",{style:{background:"#f9fafb"}},
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},"1"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},"BTB Chiller"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",color:"#dc2626",fontWeight:700,border:"1px solid #e5e7eb"}},"1.23"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",color:"#dc2626",fontWeight:700,border:"1px solid #e5e7eb"}},fmtM(RTH_YR)),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",color:"#dc2626",fontWeight:700,border:"1px solid #e5e7eb"}},fmtM(KWH_YR)),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},"<1.09"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},"261,926"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},"11.27 %"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,color:"#0d9488",border:"1px solid #e5e7eb"}},"1.17 M"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:700,border:"1px solid #e5e7eb"}},`฿${fmtN(investment)}`),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:800,color:"#2563eb",border:"1px solid #e5e7eb",fontSize:18}},r.pbY<99?`${r.pbY}Y ${r.pbM}M`:"> 20Y"),
+            React.createElement("td",{style:{padding:"12px 10px",textAlign:"center",fontWeight:800,color:"#16a34a",border:"1px solid #e5e7eb",fontSize:18}},`${(r.irr*100).toFixed(2)}%`))))),
+    // Chart Tabs
+    React.createElement("div",{style:{display:"flex",gap:4,marginBottom:16,background:"#f3f4f6",borderRadius:10,padding:4,width:"fit-content"}},
+      [{id:"invest",label:"Investment Analysis"},{id:"breakeven",label:"Breakeven"},{id:"annual",label:"Annual Compare"}].map(t=>
+        React.createElement("button",{key:t.id,onClick:()=>setView(t.id),style:{padding:"10px 24px",borderRadius:8,border:"none",background:view===t.id?"#fff":"transparent",color:view===t.id?"#111827":"#9ca3af",fontSize:17,fontWeight:600,cursor:"pointer",fontFamily:F,boxShadow:view===t.id?"0 1px 3px rgba(0,0,0,.08)":"none"}},t.label))),
+    // Charts
+    React.createElement("div",{style:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"24px 20px"}},
+      React.createElement("div",{style:{fontSize:22,fontWeight:700,marginBottom:16,fontFamily:F}},
+        view==="invest"?"Investment Analysis — BTB Chiller":view==="breakeven"?`Breakeven — Payback ${r.pbY<99?`${r.pbY}Y ${r.pbM}M`:"> 20Y"}`:"Annual Saving vs Maintenance"),
+      React.createElement(ResponsiveContainer,{width:"100%",height:450},
+        view==="invest"?
+          React.createElement(ComposedChart,{data:r.data,margin:{top:20,right:30,left:20,bottom:10}},
+            React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:"#f3f4f6"}),
+            React.createElement(XAxis,{dataKey:"year",tick:{fontSize:15,fill:"#6b7280"}}),
+            React.createElement(YAxis,{tickFormatter:fmt,tick:{fontSize:14,fill:"#6b7280"}}),
+            React.createElement(Tooltip,{content:React.createElement(TT)}),
+            React.createElement(Legend,{wrapperStyle:{fontSize:15,paddingTop:12}}),
+            React.createElement(ReferenceLine,{y:investment,stroke:"#f59e0b",strokeWidth:1.5,strokeDasharray:"8 6"}),
+            React.createElement(Line,{type:"monotone",dataKey:"cumRev",name:"Cumulative Revenue",stroke:"#16a34a",strokeWidth:2.5,dot:{r:4,fill:"#16a34a",stroke:"#fff",strokeWidth:1.5}}),
+            React.createElement(Line,{type:"monotone",dataKey:"cumCost",name:"Cumulative Cost",stroke:"#ef4444",strokeWidth:2.5,dot:{r:4,fill:"#ef4444",stroke:"#fff",strokeWidth:1.5}}),
+            React.createElement(Line,{type:"monotone",dataKey:"npv",name:"NPV",stroke:"#1f2937",strokeWidth:2.5,dot:{r:4,fill:"#1f2937",stroke:"#fff",strokeWidth:1.5}}))
+        :view==="breakeven"?
+          React.createElement(ComposedChart,{data:r.data,margin:{top:20,right:30,left:20,bottom:10}},
+            React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:"#f3f4f6"}),
+            React.createElement(XAxis,{dataKey:"year",tick:{fontSize:15,fill:"#6b7280"}}),
+            React.createElement(YAxis,{tickFormatter:fmt,tick:{fontSize:14,fill:"#6b7280"}}),
+            React.createElement(Tooltip,{content:React.createElement(TT)}),
+            React.createElement(Legend,{wrapperStyle:{fontSize:15,paddingTop:12}}),
+            React.createElement(ReferenceLine,{y:0,stroke:"#ef4444",strokeWidth:2,strokeDasharray:"8 4"}),
+            React.createElement(Area,{type:"monotone",dataKey:"cumCF",name:"Cumulative CF",stroke:color,strokeWidth:3,fill:color+"22",dot:{r:4,fill:color,stroke:"#fff",strokeWidth:1.5}}),
+            React.createElement(Line,{type:"monotone",dataKey:"npv",name:"NPV @3%",stroke:"#2563eb",strokeWidth:2,strokeDasharray:"8 4",dot:{r:3,fill:"#2563eb",stroke:"#fff",strokeWidth:1.5}}))
+        :
+          React.createElement(ComposedChart,{data:r.data.filter(d=>d.year>0),margin:{top:20,right:30,left:20,bottom:10}},
+            React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:"#f3f4f6"}),
+            React.createElement(XAxis,{dataKey:"year",tick:{fontSize:15,fill:"#6b7280"}}),
+            React.createElement(YAxis,{tickFormatter:fmt,tick:{fontSize:14,fill:"#6b7280"}}),
+            React.createElement(Tooltip,{content:React.createElement(TT)}),
+            React.createElement(Legend,{wrapperStyle:{fontSize:15,paddingTop:12}}),
+            React.createElement(Bar,{dataKey:"saving",name:"Energy Saving",fill:"#16a34a",radius:[4,4,0,0],opacity:0.8,barSize:14}),
+            React.createElement(Bar,{dataKey:"maint",name:"Maintenance",fill:"#f59e0b",radius:[4,4,0,0],opacity:0.8,barSize:14}),
+            React.createElement(Line,{type:"monotone",dataKey:"netCF",name:"Net CF",stroke:color,strokeWidth:2.5,dot:{r:3,fill:color,stroke:"#fff",strokeWidth:1.5}})))),
+    // Cash Flow Table
+    React.createElement("div",{style:{marginTop:24,background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,padding:"20px",overflowX:"auto"}},
+      React.createElement("div",{style:{fontSize:20,fontWeight:700,marginBottom:12,fontFamily:F}},`Cash Flow — 20 Years (Investment ฿${fmtN(investment)})`),
+      React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:16,fontFamily:FM}},
+        React.createElement("thead",null,
+          React.createElement("tr",{style:{background:"#0d9488"}},
+            ["Year","Saving","Maint.","Net CF","Cumulative","NPV"].map(h=>
+              React.createElement("th",{key:h,style:{padding:"12px 14px",textAlign:h==="Year"?"center":"right",color:"#fff",fontWeight:700,fontSize:15}},h)))),
+        React.createElement("tbody",null,
+          r.data.map((d,i)=>{
+            const isPB=i>1&&r.data[i-1].cumCF<0&&d.cumCF>=0;
+            return React.createElement("tr",{key:d.year,style:{borderBottom:"1px solid #f3f4f6",background:isPB?"#f0fdf4":i%2===0?"#f9fafb":"#fff"}},
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"center",fontWeight:700,color:isPB?color:"#374151"}},(d.year===0?"Invest":`Year ${d.year}`)+(isPB?" ★":"")),
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"right",color:"#16a34a"}},d.saving?fmtN(d.saving):"−"),
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"right",color:"#d97706"}},d.maint?fmtN(d.maint):"−"),
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"right",fontWeight:700,color:d.year===0?"#ef4444":d.netCF>=0?color:"#ef4444"}},d.year===0?fmtN(-investment):fmtN(d.netCF)),
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"right",fontWeight:700,color:d.cumCF>=0?color:"#ef4444"}},fmtN(d.cumCF)),
+              React.createElement("td",{style:{padding:"9px 14px",textAlign:"right",color:d.npv>=0?"#2563eb":"#ef4444"}},fmtN(d.npv)))})))),
+    React.createElement("div",{style:{textAlign:"center",fontSize:15,color:"#9ca3af",marginTop:20,paddingTop:14,borderTop:"1px solid #e5e7eb",fontFamily:F}},"BTB Chiller Feasibility • AltoTech Global Co., Ltd. • Maint = MA + Cal Sensor + Cal Power Meter"));
+}
+
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
+</script>
+</body>
+</html>
